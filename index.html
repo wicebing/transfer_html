@@ -475,6 +475,43 @@
     white-space: nowrap;
   }
   .patient-table .date { font-family: 'JetBrains Mono', monospace; color: var(--ink-soft); white-space: nowrap; }
+  .patient-table .date-cell { white-space: nowrap; }
+  .patient-table .date-cell .date { display: block; line-height: 1.4; }
+  .patient-table .notes-cell {
+    color: var(--ink-soft);
+    font-size: 12.5px;
+    line-height: 1.5;
+    font-style: normal;
+  }
+
+  .day-badge {
+    display: inline-block;
+    margin-top: 3px;
+    padding: 1px 7px;
+    font-size: 11px;
+    line-height: 1.5;
+    border-radius: 2px;
+    font-weight: 500;
+    letter-spacing: 0.02em;
+    white-space: nowrap;
+  }
+  .day-badge.day-weekday {
+    background: transparent;
+    color: var(--ink-mute);
+    padding-left: 0;
+    padding-right: 0;
+  }
+  .day-badge.day-weekend {
+    background: #fdf3d9;
+    color: #8a5a1a;
+    border: 1px solid #ecd9a5;
+  }
+  .day-badge.day-holiday {
+    background: #f4dcdc;
+    color: #8b2a2a;
+    border: 1px solid #e5b9b9;
+    font-weight: 600;
+  }
 
   /* ——— Empty state ——— */
   #empty-state {
@@ -713,6 +750,97 @@ const CATEGORY_INDEX = Object.fromEntries(CATEGORY_META.map((c, i) => [c.key, i]
 
 const INTER_CAMPUS_KEYWORD = '國立台灣大學醫學院附設醫院新竹台大分院';
 
+/* ——— Taiwan official holidays (行政院人事行政總處公布) ———
+   Covers 2024-2027. Date format: 'YYYY-MM-DD'.               */
+const TAIWAN_HOLIDAYS = {
+  // 2024 (民國113年)
+  '2024-01-01': '開國紀念日',
+  '2024-02-08': '小年夜',
+  '2024-02-09': '除夕',
+  '2024-02-10': '春節',
+  '2024-02-11': '春節',
+  '2024-02-12': '春節',
+  '2024-02-13': '春節補假',
+  '2024-02-14': '春節補假',
+  '2024-02-28': '和平紀念日',
+  '2024-04-04': '兒童節及清明節',
+  '2024-04-05': '清明節',
+  '2024-05-01': '勞動節',
+  '2024-06-10': '端午節',
+  '2024-09-17': '中秋節',
+  '2024-10-10': '國慶日',
+
+  // 2025 (民國114年)
+  '2025-01-01': '開國紀念日',
+  '2025-01-27': '春節前一日',
+  '2025-01-28': '除夕',
+  '2025-01-29': '春節',
+  '2025-01-30': '春節',
+  '2025-01-31': '春節',
+  '2025-02-28': '和平紀念日',
+  '2025-04-03': '調整放假日',
+  '2025-04-04': '兒童節及清明節',
+  '2025-05-30': '端午節前一日',
+  '2025-05-31': '端午節',
+  '2025-09-29': '教師節補假',
+  '2025-10-06': '中秋節',
+  '2025-10-10': '國慶日',
+  '2025-10-24': '光復節補假',
+  '2025-10-25': '臺灣光復節',
+  '2025-12-25': '行憲紀念日',
+
+  // 2026 (民國115年)
+  '2026-01-01': '開國紀念日',
+  '2026-02-15': '小年夜',
+  '2026-02-16': '除夕',
+  '2026-02-17': '春節',
+  '2026-02-18': '春節',
+  '2026-02-19': '春節',
+  '2026-02-20': '小年夜補假',
+  '2026-02-27': '和平紀念日補假',
+  '2026-02-28': '和平紀念日',
+  '2026-04-03': '兒童節補假',
+  '2026-04-04': '兒童節',
+  '2026-04-05': '清明節',
+  '2026-04-06': '清明節補假',
+  '2026-05-01': '勞動節',
+  '2026-06-19': '端午節',
+  '2026-09-25': '中秋節',
+  '2026-09-28': '教師節',
+  '2026-10-09': '國慶日補假',
+  '2026-10-10': '國慶日',
+  '2026-10-25': '臺灣光復節',
+  '2026-10-26': '光復節補假',
+  '2026-12-25': '行憲紀念日',
+};
+
+const WEEKDAY_ZH = ['日', '一', '二', '三', '四', '五', '六'];
+
+/* Returns: { weekday, weekdayZh, isWeekend, isHoliday, holidayName, kind }
+   kind: 'weekday' | 'weekend' | 'holiday'                                  */
+function getDayInfo(date) {
+  if (!(date instanceof Date) || isNaN(date)) return null;
+  const wd = date.getDay();
+  const isWeekend = wd === 0 || wd === 6;
+  const pad = (n) => String(n).padStart(2, '0');
+  const key = `${date.getFullYear()}-${pad(date.getMonth()+1)}-${pad(date.getDate())}`;
+  const holidayName = TAIWAN_HOLIDAYS[key] || null;
+
+  let kind;
+  if (holidayName) kind = 'holiday';
+  else if (isWeekend) kind = 'weekend';
+  else kind = 'weekday';
+
+  return {
+    weekday: wd,
+    weekdayZh: WEEKDAY_ZH[wd],
+    isWeekend,
+    isHoliday: !!holidayName || isWeekend, // 例假日 = 週末 + 國定假日
+    holidayName,
+    kind,
+  };
+}
+
 /* ——— Classify reason text into category + detail ——— */
 function classifyReason(reason) {
   const r = (reason || '').toString().trim();
@@ -875,6 +1003,8 @@ function normalizeRow(row, rawRow, sourceName) {
 
   // Sub-specialty: 轉出科別 (新竹) or 細科 (竹北)
   const subSpec = row['轉出科別'] ?? row['細科'] ?? '';
+  // Notes: 備註 (新竹) or 原因分析 (竹北)
+  const notes = row['備註'] ?? row['原因分析'] ?? '';
 
   const transferHosp = (row['轉院醫院名稱'] || '').toString();
 
@@ -894,6 +1024,7 @@ function normalizeRow(row, rawRow, sourceName) {
     transferHospital: transferHosp,
     transferReason: reason.toString().trim(),
     subSpecialty: (subSpec || '').toString().trim(),
+    notes: (notes || '').toString().trim(),
     classified: classifyReason(reason),
     isInterCampus: transferHosp.includes(INTER_CAMPUS_KEYWORD),
   };
@@ -915,6 +1046,18 @@ function parseDate(v) {
   const m = s.match(/^(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})/);
   if (m) return new Date(+m[1], +m[2]-1, +m[3]);
   return null;
+}
+
+function parseDischargeDate(v) {
+  if (v === null || v === undefined || v === '') return null;
+  if (v instanceof Date && !isNaN(v)) return v;
+  const s = v.toString().trim();
+  // Try: yyyy/m/d HH:MM  or  yyyy-m-d HH:MM  (新竹 format: "2026/01/01 12:46")
+  const m = s.match(/^(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})(?:[\sT]+(\d{1,2}):(\d{1,2}))?/);
+  if (m) return new Date(+m[1], +m[2]-1, +m[3], +(m[4]||0), +(m[5]||0));
+  // Fallback to native parse
+  const d = new Date(s);
+  return isNaN(d) ? null : d;
 }
 
 /* =======================================================================
@@ -1059,12 +1202,71 @@ function renderMonthlyChart(a) {
     borderRadius: 2,
   }));
 
+  // Plugin: draw count inside each visible segment + total on top
+  const stackLabels = {
+    id: 'stackLabels',
+    afterDatasetsDraw(chart) {
+      const { ctx: c } = chart;
+      c.save();
+
+      // 1) Per-segment counts (centered in each stack layer)
+      chart.data.datasets.forEach((ds, i) => {
+        const meta = chart.getDatasetMeta(i);
+        if (meta.hidden) return;
+        meta.data.forEach((bar, idx) => {
+          const v = ds.data[idx];
+          if (!v) return;
+          const { x, y, base } = bar.getProps(['x', 'y', 'base'], true);
+          const h = Math.abs(base - y);
+          if (h < 16) return; // skip if segment too short to fit a label
+          c.fillStyle = '#ffffff';
+          c.font = '600 11px "JetBrains Mono", monospace';
+          c.textAlign = 'center';
+          c.textBaseline = 'middle';
+          c.shadowColor = 'rgba(0,0,0,0.35)';
+          c.shadowBlur = 2;
+          c.fillText(v, x, (y + base) / 2);
+          c.shadowBlur = 0;
+        });
+      });
+
+      // 2) Stack total on top of each bar
+      const totalsByIdx = new Array(chart.data.labels.length).fill(0);
+      const topsByIdx = new Array(chart.data.labels.length).fill(Infinity);
+      chart.data.datasets.forEach((ds, i) => {
+        const meta = chart.getDatasetMeta(i);
+        if (meta.hidden) return;
+        meta.data.forEach((bar, idx) => {
+          const v = ds.data[idx] || 0;
+          totalsByIdx[idx] += v;
+          const top = bar.getProps(['y'], true).y;
+          if (v > 0 && top < topsByIdx[idx]) topsByIdx[idx] = top;
+        });
+      });
+      chart.getDatasetMeta(0).data.forEach((bar, idx) => {
+        const total = totalsByIdx[idx];
+        if (!total) return;
+        const { x } = bar.getProps(['x'], true);
+        const y = topsByIdx[idx];
+        c.fillStyle = '#1a1915';
+        c.font = '700 13px "JetBrains Mono", monospace';
+        c.textAlign = 'center';
+        c.textBaseline = 'bottom';
+        c.fillText(total, x, y - 6);
+      });
+
+      c.restore();
+    }
+  };
+
   monthlyChartInstance = new Chart(ctx, {
     type: 'bar',
     data: { labels, datasets },
+    plugins: [stackLabels],
     options: {
       responsive: true,
       maintainAspectRatio: false,
+      layout: { padding: { top: 24 } },
       animation: { duration: 600, easing: 'easeOutQuart' },
       plugins: {
         legend: { display: false },
@@ -1180,29 +1382,50 @@ function renderMonthlyStrip(rsn, months) {
 
 function renderPatientTable(records, meta) {
   const sorted = [...records].sort((a, b) => a.date - b.date);
-  const rows = sorted.map(r => `
+  const rows = sorted.map(r => {
+    const dischargeDt = parseDischargeDate(r.dischargeDate);
+    const info = dischargeDt ? getDayInfo(dischargeDt) : null;
+
+    let dayBadge = '';
+    if (info) {
+      if (info.kind === 'holiday') {
+        dayBadge = `<span class="day-badge day-holiday" title="國定假日">週${info.weekdayZh} · ${escapeHtml(info.holidayName)}</span>`;
+      } else if (info.kind === 'weekend') {
+        dayBadge = `<span class="day-badge day-weekend" title="例假日">週${info.weekdayZh} · 例假日</span>`;
+      } else {
+        dayBadge = `<span class="day-badge day-weekday">週${info.weekdayZh}</span>`;
+      }
+    }
+
+    return `
     <tr>
       <td class="mono" style="font-size:12px;">${escapeHtml(r.account || '—')}</td>
       <td class="date">${formatDate(r.date)}</td>
-      <td class="date">${formatDateTime(r.dischargeDate)}</td>
+      <td class="date-cell">
+        <div class="date">${formatDateTime(r.dischargeDate)}</div>
+        ${dayBadge}
+      </td>
       <td>${escapeHtml(r.department || '—')}</td>
       <td class="diag">${escapeHtml(r.diagnosis || '—')}</td>
       <td>${r.subSpecialty ? `<span class="dept">${escapeHtml(r.subSpecialty)}</span>` : '<span style="color:var(--ink-mute);">—</span>'}</td>
       <td>${escapeHtml(r.transferHospital || '—')}</td>
+      <td class="notes-cell">${r.notes ? escapeHtml(r.notes) : '<span style="color:var(--ink-mute);">—</span>'}</td>
     </tr>
-  `).join('');
+  `;
+  }).join('');
 
   return `
     <table class="patient-table">
       <thead>
         <tr>
-          <th style="width:120px;">帳號</th>
+          <th style="width:112px;">帳號</th>
           <th style="width:96px;">來診日</th>
-          <th style="width:132px;">核離日</th>
-          <th style="width:88px;">科別</th>
+          <th style="width:152px;">核離日</th>
+          <th style="width:84px;">科別</th>
           <th>診斷</th>
-          <th style="width:132px;">轉出科別／細科</th>
-          <th style="width:240px;">轉院醫院</th>
+          <th style="width:124px;">轉出科別／細科</th>
+          <th style="width:200px;">轉院醫院</th>
+          <th style="width:200px;">備註／原因分析</th>
         </tr>
       </thead>
       <tbody>${rows}</tbody>
@@ -1273,14 +1496,25 @@ function exportAnalysis(a) {
   XLSX.utils.book_append_sheet(wb, ws3, '月份趨勢');
 
   /* Sheet 4: 病人明細 */
-  const detailHeader = ['來源檔', '帳號', '來診日', '核離日', '月份', '病歷號', '姓名', '性別', '科別', '診斷', '轉出科別/細科', '轉院醫院名稱', '轉院原因', '類別', '是否台大互轉'];
+  const detailHeader = ['來源檔', '帳號', '來診日', '核離日', '核離星期', '例假/假日', '月份', '病歷號', '姓名', '性別', '科別', '診斷', '轉出科別/細科', '轉院醫院名稱', '轉院原因', '備註／原因分析', '類別', '是否台大互轉'];
   const detail = [detailHeader];
   a.records.forEach(r => {
+    const dischargeDt = parseDischargeDate(r.dischargeDate);
+    const info = dischargeDt ? getDayInfo(dischargeDt) : null;
+    const weekdayCell = info ? `週${info.weekdayZh}` : '';
+    let holidayCell = '';
+    if (info) {
+      if (info.kind === 'holiday') holidayCell = info.holidayName;
+      else if (info.kind === 'weekend') holidayCell = '例假日';
+      else holidayCell = '';
+    }
     detail.push([
       r.source,
       r.account,
       formatDate(r.date),
       formatDateTime(r.dischargeDate),
+      weekdayCell,
+      holidayCell,
       r.monthKey,
       r.chartNo,
       r.name,
@@ -1290,14 +1524,15 @@ function exportAnalysis(a) {
       r.subSpecialty,
       r.transferHospital,
       r.transferReason,
+      r.notes,
       r.classified.category,
       r.isInterCampus ? '是' : '否',
     ]);
   });
   const ws4 = XLSX.utils.aoa_to_sheet(detail);
   ws4['!cols'] = [
-    { wch: 28 }, { wch: 13 }, { wch: 12 }, { wch: 18 }, { wch: 8 }, { wch: 12 }, { wch: 10 }, { wch: 6 },
-    { wch: 10 }, { wch: 42 }, { wch: 14 }, { wch: 34 }, { wch: 22 }, { wch: 10 }, { wch: 10 },
+    { wch: 28 }, { wch: 13 }, { wch: 12 }, { wch: 18 }, { wch: 8 }, { wch: 14 }, { wch: 8 }, { wch: 12 }, { wch: 10 }, { wch: 6 },
+    { wch: 10 }, { wch: 42 }, { wch: 14 }, { wch: 34 }, { wch: 22 }, { wch: 28 }, { wch: 10 }, { wch: 10 },
   ];
   XLSX.utils.book_append_sheet(wb, ws4, '病人明細');
 
