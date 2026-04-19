@@ -1,0 +1,1353 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>轉院原因樞紐分析儀表板</title>
+
+<!-- Fonts -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Serif+TC:wght@500;700;900&family=Noto+Sans+TC:wght@300;400;500;700&family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet">
+
+<!-- Libs -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
+
+<style>
+  :root {
+    --bg: #f6f3ed;
+    --bg-card: #fffdf8;
+    --bg-deep: #ece7dc;
+    --ink: #1a1915;
+    --ink-soft: #595652;
+    --ink-mute: #8a857e;
+    --line: #d9d2c4;
+    --line-soft: #e8e2d5;
+    --accent: #0a3d42;
+    --accent-soft: #176067;
+
+    /* Category palette — muted, refined */
+    --cat-bed: #8b2a2a;       /* 無床位 - deep crimson */
+    --cat-bed-bg: #f4e4e4;
+    --cat-staff: #1f3a5f;      /* 人力因素 - deep navy */
+    --cat-staff-bg: #e2e7f0;
+    --cat-family: #3a6b4d;     /* 家屬要求 - muted forest */
+    --cat-family-bg: #e3ece4;
+    --cat-equip: #8a5a1a;      /* 設備 - ochre */
+    --cat-equip-bg: #f3e9d5;
+    --cat-other: #525252;
+    --cat-other-bg: #e8e6e2;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  html, body {
+    background: var(--bg);
+    color: var(--ink);
+    font-family: 'Noto Sans TC', sans-serif;
+    font-weight: 400;
+    font-size: 15px;
+    line-height: 1.6;
+    min-height: 100vh;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .mono { font-family: 'JetBrains Mono', monospace; font-feature-settings: "tnum"; }
+  .serif { font-family: 'Noto Serif TC', serif; }
+
+  /* ——— Shell ——— */
+  .shell {
+    max-width: 1400px;
+    margin: 0 auto;
+    padding: 48px 48px 120px;
+  }
+  @media (max-width: 800px) {
+    .shell { padding: 24px 16px 80px; }
+  }
+
+  /* ——— Header ——— */
+  .masthead {
+    border-bottom: 1px solid var(--line);
+    padding-bottom: 32px;
+    margin-bottom: 40px;
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 32px;
+    flex-wrap: wrap;
+  }
+  .masthead .title-block { flex: 1; min-width: 280px; }
+  .masthead .eyebrow {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin-bottom: 12px;
+  }
+  .masthead h1 {
+    font-family: 'Noto Serif TC', serif;
+    font-weight: 900;
+    font-size: clamp(32px, 4vw, 48px);
+    line-height: 1.1;
+    color: var(--ink);
+    letter-spacing: -0.01em;
+  }
+  .masthead .sub {
+    color: var(--ink-soft);
+    font-size: 15px;
+    margin-top: 12px;
+    max-width: 640px;
+  }
+  .masthead .meta {
+    font-size: 12px;
+    color: var(--ink-mute);
+    text-align: right;
+    font-family: 'JetBrains Mono', monospace;
+  }
+
+  /* ——— Upload zone ——— */
+  .upload-card {
+    background: var(--bg-card);
+    border: 1px solid var(--line);
+    padding: 40px;
+    margin-bottom: 40px;
+    position: relative;
+  }
+  .upload-card::before {
+    content: "";
+    position: absolute;
+    top: -1px; left: -1px; right: -1px;
+    height: 3px;
+    background: linear-gradient(90deg, var(--cat-bed), var(--cat-staff), var(--cat-family), var(--cat-equip));
+  }
+  .upload-card h2 {
+    font-family: 'Noto Serif TC', serif;
+    font-size: 22px;
+    font-weight: 700;
+    margin-bottom: 8px;
+  }
+  .upload-card .desc {
+    color: var(--ink-soft);
+    font-size: 14px;
+    margin-bottom: 24px;
+  }
+  .drop-zone {
+    border: 2px dashed var(--line);
+    padding: 48px 24px;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    background: #fbf8f1;
+  }
+  .drop-zone:hover, .drop-zone.drag-over {
+    border-color: var(--accent);
+    background: #f5f0e5;
+  }
+  .drop-zone .icon {
+    width: 48px; height: 48px;
+    margin: 0 auto 16px;
+    stroke: var(--ink-mute);
+    stroke-width: 1.2;
+    fill: none;
+  }
+  .drop-zone .drop-main {
+    font-size: 16px;
+    font-weight: 500;
+    color: var(--ink);
+    margin-bottom: 6px;
+  }
+  .drop-zone .drop-sub {
+    font-size: 13px;
+    color: var(--ink-mute);
+  }
+  .drop-zone .accent-link {
+    color: var(--accent);
+    text-decoration: underline;
+    text-underline-offset: 3px;
+  }
+  input[type=file] { display: none; }
+
+  .uploaded-files {
+    margin-top: 20px;
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+  .file-chip {
+    background: var(--accent);
+    color: #fbf8f1;
+    padding: 6px 12px;
+    font-size: 13px;
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    border-radius: 2px;
+  }
+  .file-chip .x {
+    cursor: pointer;
+    opacity: 0.7;
+    font-weight: 700;
+  }
+  .file-chip .x:hover { opacity: 1; }
+
+  /* ——— Button ——— */
+  .btn {
+    background: var(--ink);
+    color: #fbf8f1;
+    border: none;
+    padding: 12px 24px;
+    font-family: 'Noto Sans TC', sans-serif;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    letter-spacing: 0.02em;
+    border-radius: 2px;
+  }
+  .btn:hover { background: var(--accent); transform: translateY(-1px); }
+  .btn.secondary { background: transparent; color: var(--ink); border: 1px solid var(--line); }
+  .btn.secondary:hover { background: var(--bg-deep); border-color: var(--ink); }
+  .btn.small { padding: 6px 12px; font-size: 12px; }
+
+  /* ——— KPI row ——— */
+  .kpi-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 16px;
+    margin-bottom: 40px;
+  }
+  .kpi {
+    background: var(--bg-card);
+    border: 1px solid var(--line);
+    padding: 24px;
+    position: relative;
+  }
+  .kpi.featured {
+    background: var(--ink);
+    color: #fbf8f1;
+    border-color: var(--ink);
+  }
+  .kpi .label {
+    font-size: 11px;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    font-weight: 600;
+    color: var(--ink-mute);
+    margin-bottom: 12px;
+  }
+  .kpi.featured .label { color: rgba(255,255,255,0.6); }
+  .kpi .value {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 38px;
+    font-weight: 700;
+    line-height: 1;
+    color: var(--ink);
+    font-feature-settings: "tnum";
+  }
+  .kpi.featured .value { color: #fbf8f1; }
+  .kpi .hint {
+    font-size: 12px;
+    color: var(--ink-mute);
+    margin-top: 10px;
+  }
+  .kpi.featured .hint { color: rgba(255,255,255,0.7); }
+
+  /* ——— Section ——— */
+  section { margin-bottom: 56px; }
+
+  .section-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    border-bottom: 1px solid var(--line);
+    padding-bottom: 12px;
+    margin-bottom: 24px;
+    flex-wrap: wrap;
+    gap: 16px;
+  }
+  .section-head h2 {
+    font-family: 'Noto Serif TC', serif;
+    font-size: 26px;
+    font-weight: 700;
+    color: var(--ink);
+  }
+  .section-head .desc {
+    font-size: 13px;
+    color: var(--ink-mute);
+  }
+
+  /* ——— Chart container ——— */
+  .chart-wrap {
+    background: var(--bg-card);
+    border: 1px solid var(--line);
+    padding: 28px;
+    position: relative;
+  }
+  .chart-wrap .chart-holder {
+    position: relative;
+    height: 360px;
+  }
+
+  .chart-legend {
+    display: flex;
+    gap: 20px;
+    flex-wrap: wrap;
+    margin-top: 20px;
+    padding-top: 20px;
+    border-top: 1px solid var(--line-soft);
+  }
+  .legend-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+    color: var(--ink-soft);
+    cursor: pointer;
+    user-select: none;
+  }
+  .legend-item.hidden { opacity: 0.35; text-decoration: line-through; }
+  .legend-swatch {
+    width: 14px;
+    height: 14px;
+    border-radius: 2px;
+  }
+
+  /* ——— Category group ——— */
+  .cat-group {
+    margin-bottom: 40px;
+    border: 1px solid var(--line);
+    background: var(--bg-card);
+    overflow: hidden;
+  }
+  .cat-header {
+    padding: 20px 24px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    border-left: 5px solid var(--cat-color, var(--ink));
+    background: var(--cat-bg, transparent);
+  }
+  .cat-header .titleblk {
+    display: flex;
+    align-items: baseline;
+    gap: 16px;
+    flex-wrap: wrap;
+  }
+  .cat-header h3 {
+    font-family: 'Noto Serif TC', serif;
+    font-size: 22px;
+    font-weight: 700;
+    color: var(--ink);
+  }
+  .cat-header .tagline {
+    font-size: 12px;
+    color: var(--ink-mute);
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+  }
+  .cat-header .total {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 28px;
+    font-weight: 700;
+    color: var(--cat-color, var(--ink));
+  }
+
+  /* ——— Reason rows ——— */
+  .reason-row {
+    border-top: 1px solid var(--line-soft);
+  }
+  .reason-row:first-of-type { border-top: 1px solid var(--line); }
+
+  .reason-summary {
+    padding: 18px 24px;
+    display: grid;
+    grid-template-columns: 1fr auto auto auto;
+    gap: 24px;
+    align-items: center;
+    cursor: pointer;
+    transition: background 0.15s;
+  }
+  .reason-summary:hover { background: var(--bg-deep); }
+  .reason-summary .name {
+    font-size: 15px;
+    font-weight: 500;
+    color: var(--ink);
+  }
+  .reason-summary .count {
+    font-family: 'JetBrains Mono', monospace;
+    font-weight: 700;
+    font-size: 18px;
+    color: var(--cat-color, var(--ink));
+    min-width: 50px;
+    text-align: right;
+  }
+  .reason-summary .bar-track {
+    width: 140px;
+    height: 6px;
+    background: var(--line-soft);
+    position: relative;
+    border-radius: 3px;
+    overflow: hidden;
+  }
+  .reason-summary .bar-fill {
+    height: 100%;
+    background: var(--cat-color, var(--ink));
+    opacity: 0.75;
+  }
+  .reason-summary .chev {
+    width: 16px; height: 16px;
+    transition: transform 0.2s;
+    stroke: var(--ink-mute);
+    stroke-width: 2;
+    fill: none;
+  }
+  .reason-row.open .chev { transform: rotate(180deg); }
+  @media (max-width: 700px) {
+    .reason-summary { grid-template-columns: 1fr auto; gap: 12px; }
+    .reason-summary .bar-track { display: none; }
+  }
+
+  /* ——— Reason expanded ——— */
+  .reason-detail {
+    display: none;
+    padding: 4px 24px 24px;
+    background: #fbf8f1;
+    border-top: 1px solid var(--line-soft);
+  }
+  .reason-row.open .reason-detail { display: block; }
+
+  .monthly-strip {
+    display: flex;
+    gap: 8px;
+    margin: 16px 0 24px;
+    flex-wrap: wrap;
+  }
+  .monthly-pill {
+    padding: 6px 12px;
+    background: var(--bg-card);
+    border: 1px solid var(--line-soft);
+    font-size: 12px;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .monthly-pill .m-label { color: var(--ink-mute); }
+  .monthly-pill .m-val { font-family: 'JetBrains Mono', monospace; font-weight: 700; color: var(--cat-color, var(--ink)); }
+
+  .patient-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+    margin-top: 8px;
+  }
+  .patient-table thead th {
+    background: var(--bg-deep);
+    padding: 10px 12px;
+    text-align: left;
+    font-weight: 600;
+    font-size: 11px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--ink-soft);
+    border-bottom: 1px solid var(--line);
+  }
+  .patient-table tbody td {
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--line-soft);
+    vertical-align: top;
+  }
+  .patient-table tbody tr:hover { background: var(--bg-deep); }
+  .patient-table .diag {
+    color: var(--ink);
+    line-height: 1.5;
+  }
+  .patient-table .dept {
+    display: inline-block;
+    padding: 2px 8px;
+    background: var(--cat-bg);
+    color: var(--cat-color);
+    font-size: 12px;
+    font-weight: 500;
+    border-radius: 2px;
+    white-space: nowrap;
+  }
+  .patient-table .date { font-family: 'JetBrains Mono', monospace; color: var(--ink-soft); white-space: nowrap; }
+
+  /* ——— Empty state ——— */
+  #empty-state {
+    text-align: center;
+    padding: 80px 24px;
+    color: var(--ink-mute);
+  }
+  #empty-state .big {
+    font-family: 'Noto Serif TC', serif;
+    font-size: 24px;
+    color: var(--ink-soft);
+    margin-bottom: 12px;
+  }
+
+  /* ——— Hidden state ——— */
+  .results-wrap { display: none; }
+  body.has-data .results-wrap { display: block; }
+  body.has-data #empty-state { display: none; }
+
+  /* ——— Toolbar ——— */
+  .toolbar {
+    display: flex;
+    gap: 12px;
+    align-items: center;
+    flex-wrap: wrap;
+  }
+
+  /* ——— Inter-campus callout ——— */
+  .inter-card {
+    background: linear-gradient(135deg, var(--ink) 0%, var(--accent) 100%);
+    color: #fbf8f1;
+    padding: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 24px;
+    flex-wrap: wrap;
+    margin-bottom: 40px;
+    position: relative;
+    overflow: hidden;
+  }
+  .inter-card::before {
+    content: "";
+    position: absolute;
+    right: -80px; top: -80px;
+    width: 240px; height: 240px;
+    border-radius: 50%;
+    background: radial-gradient(circle, rgba(255,255,255,0.06) 0%, transparent 70%);
+  }
+  .inter-card .label-block { flex: 1; min-width: 240px; position: relative; }
+  .inter-card .eyebrow {
+    font-size: 11px;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+    color: rgba(255,255,255,0.7);
+    margin-bottom: 8px;
+  }
+  .inter-card h3 {
+    font-family: 'Noto Serif TC', serif;
+    font-size: 26px;
+    font-weight: 700;
+    color: #fbf8f1;
+  }
+  .inter-card .desc {
+    font-size: 13px;
+    color: rgba(255,255,255,0.7);
+    margin-top: 8px;
+    max-width: 500px;
+  }
+  .inter-card .bignum {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 64px;
+    font-weight: 700;
+    line-height: 1;
+    position: relative;
+  }
+  .inter-card .bignum-sub {
+    font-size: 12px;
+    color: rgba(255,255,255,0.6);
+    text-align: right;
+    margin-top: 4px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+  }
+
+  /* ——— Error banner ——— */
+  .error-banner {
+    background: var(--cat-bed-bg);
+    border-left: 4px solid var(--cat-bed);
+    padding: 14px 18px;
+    margin: 16px 0;
+    color: var(--cat-bed);
+    font-size: 14px;
+    display: none;
+  }
+  .error-banner.show { display: block; }
+
+  /* Minor helpers */
+  .spacer-sm { height: 16px; }
+  .nowrap { white-space: nowrap; }
+
+  /* Print hint */
+  @media print {
+    .upload-card, .toolbar { display: none; }
+  }
+</style>
+</head>
+
+<body>
+<div class="shell">
+
+  <!-- ================ HEADER ================ -->
+  <header class="masthead">
+    <div class="title-block">
+      <div class="eyebrow">Medical analytics · 樞紐匯報</div>
+      <h1 class="serif">轉院原因<br/>分析儀表板</h1>
+      <p class="sub">上傳轉出名單，自動識別欄位格式，依月份切分趨勢、依原因分類樞紐，並支援深入查看病人診斷與轉出細科。</p>
+    </div>
+    <div class="meta" id="meta-info">
+      <div id="meta-time">—</div>
+      <div id="meta-count">尚無資料</div>
+    </div>
+  </header>
+
+  <!-- ================ UPLOAD ================ -->
+  <div class="upload-card">
+    <h2 class="serif">① 上傳 Excel 名單</h2>
+    <p class="desc">支援兩種格式自動識別：新竹醫院格式（含「轉出科別」）與生醫竹北格式（含「細科」）。可一次上傳多個檔案合併分析。</p>
+
+    <label class="drop-zone" id="drop-zone">
+      <svg class="icon" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+      <div class="drop-main">拖放 Excel 檔案到此處，或 <span class="accent-link">點擊選擇檔案</span></div>
+      <div class="drop-sub">支援 .xlsx / .xls · 可一次選取多個</div>
+      <input type="file" id="file-input" accept=".xlsx,.xls" multiple />
+    </label>
+
+    <div class="uploaded-files" id="uploaded-files"></div>
+    <div class="error-banner" id="error-banner"></div>
+
+    <div class="spacer-sm"></div>
+    <div class="toolbar">
+      <button class="btn" id="analyze-btn" disabled>② 開始分析</button>
+      <button class="btn secondary" id="reset-btn">清除重置</button>
+      <button class="btn secondary" id="download-btn" style="display:none;">下載分析報告 (Excel)</button>
+    </div>
+  </div>
+
+  <!-- ================ EMPTY ================ -->
+  <div id="empty-state">
+    <div class="big serif">尚未載入資料</div>
+    <div>請於上方上傳轉出名單後點選「開始分析」。</div>
+  </div>
+
+  <!-- ================ RESULTS ================ -->
+  <div class="results-wrap">
+
+    <!-- KPI -->
+    <div class="kpi-grid">
+      <div class="kpi featured">
+        <div class="label">樞紐分析人次</div>
+        <div class="value" id="kpi-total">—</div>
+        <div class="hint" id="kpi-total-hint">—</div>
+      </div>
+      <div class="kpi">
+        <div class="label">涵蓋月份</div>
+        <div class="value" id="kpi-months">—</div>
+        <div class="hint" id="kpi-months-hint">依來診日統計</div>
+      </div>
+      <div class="kpi">
+        <div class="label">月平均轉出</div>
+        <div class="value" id="kpi-avg">—</div>
+        <div class="hint">人次 / 月</div>
+      </div>
+      <div class="kpi">
+        <div class="label">轉院原因類別</div>
+        <div class="value" id="kpi-reasons">—</div>
+        <div class="hint" id="kpi-reasons-hint">—</div>
+      </div>
+    </div>
+
+    <!-- Inter-campus callout -->
+    <div class="inter-card" id="inter-card">
+      <div class="label-block">
+        <div class="eyebrow">Cross-campus transfer · 已從樞紐分析排除</div>
+        <h3>新竹台大院區互轉</h3>
+        <div class="desc">轉院醫院名稱包含「國立台灣大學醫學院附設醫院新竹台大分院」之記錄；此部分單獨統計，不納入下方月份趨勢與原因樞紐。</div>
+      </div>
+      <div>
+        <div class="bignum" id="inter-count">—</div>
+        <div class="bignum-sub" id="inter-pct">—</div>
+      </div>
+    </div>
+
+    <!-- Monthly trend -->
+    <section>
+      <div class="section-head">
+        <div>
+          <h2 class="serif">依月份趨勢</h2>
+          <div class="desc">依「來診日」切分月份，堆疊顯示各類別轉院原因之人次（已排除新竹台大院區互轉）。</div>
+        </div>
+      </div>
+      <div class="chart-wrap">
+        <div class="chart-holder"><canvas id="monthly-chart"></canvas></div>
+        <div class="chart-legend" id="chart-legend"></div>
+      </div>
+    </section>
+
+    <!-- Categorized reasons -->
+    <section>
+      <div class="section-head">
+        <div>
+          <h2 class="serif">轉院原因樞紐</h2>
+          <div class="desc">同類型原因已聚合於同一區塊，已排除新竹台大院區互轉。點擊單一原因可展開病人名單（診斷、轉出科別 / 細科）。</div>
+        </div>
+      </div>
+      <div id="categories"></div>
+    </section>
+
+  </div>
+</div>
+
+<script>
+/* =======================================================================
+   1) DATA MODEL & CONSTANTS
+   ======================================================================= */
+
+// Canonical category ordering & meta
+const CATEGORY_META = [
+  { key: '無床位',     tag: 'BED CAPACITY',    color: '#8b2a2a', bg: '#f4e4e4', cssColor: 'var(--cat-bed)',    cssBg: 'var(--cat-bed-bg)' },
+  { key: '人力因素',   tag: 'STAFFING',         color: '#1f3a5f', bg: '#e2e7f0', cssColor: 'var(--cat-staff)',  cssBg: 'var(--cat-staff-bg)' },
+  { key: '家屬要求',   tag: 'FAMILY REQUEST',   color: '#3a6b4d', bg: '#e3ece4', cssColor: 'var(--cat-family)', cssBg: 'var(--cat-family-bg)' },
+  { key: '設備',       tag: 'EQUIPMENT',        color: '#8a5a1a', bg: '#f3e9d5', cssColor: 'var(--cat-equip)',  cssBg: 'var(--cat-equip-bg)' },
+  { key: '其他',       tag: 'OTHER',            color: '#525252', bg: '#e8e6e2', cssColor: 'var(--cat-other)',  cssBg: 'var(--cat-other-bg)' },
+];
+const CATEGORY_INDEX = Object.fromEntries(CATEGORY_META.map((c, i) => [c.key, i]));
+
+const INTER_CAMPUS_KEYWORD = '國立台灣大學醫學院附設醫院新竹台大分院';
+
+/* ——— Classify reason text into category + detail ——— */
+function classifyReason(reason) {
+  const r = (reason || '').toString().trim();
+  if (!r) return { category: '其他', detail: '未填寫', full: '未填寫' };
+  if (r.startsWith('無床位'))  return { category: '無床位',   detail: r, full: r };
+  if (r.startsWith('人力因素-')) return { category: '人力因素', detail: r.slice(5), full: r };
+  if (r.startsWith('家屬要求-')) return { category: '家屬要求', detail: r.slice(5), full: r };
+  if (r.startsWith('設備-'))     return { category: '設備',     detail: r.slice(3), full: r };
+  return { category: '其他', detail: r, full: r };
+}
+
+/* =======================================================================
+   2) FILE UPLOAD
+   ======================================================================= */
+
+const dropZone = document.getElementById('drop-zone');
+const fileInput = document.getElementById('file-input');
+const uploadedFilesEl = document.getElementById('uploaded-files');
+const analyzeBtn = document.getElementById('analyze-btn');
+const resetBtn = document.getElementById('reset-btn');
+const downloadBtn = document.getElementById('download-btn');
+const errorBanner = document.getElementById('error-banner');
+
+let pendingFiles = [];       // File[]
+let currentRecords = [];     // normalized records
+let currentAnalysis = null;  // analysis result
+
+dropZone.addEventListener('click', (e) => {
+  if (e.target.tagName === 'INPUT') return;
+  fileInput.click();
+});
+fileInput.addEventListener('change', (e) => addFiles(e.target.files));
+['dragenter','dragover'].forEach(ev => dropZone.addEventListener(ev, (e) => {
+  e.preventDefault(); dropZone.classList.add('drag-over');
+}));
+['dragleave','drop'].forEach(ev => dropZone.addEventListener(ev, (e) => {
+  e.preventDefault(); dropZone.classList.remove('drag-over');
+}));
+dropZone.addEventListener('drop', (e) => {
+  e.preventDefault();
+  if (e.dataTransfer.files?.length) addFiles(e.dataTransfer.files);
+});
+
+function addFiles(fileList) {
+  const existing = new Set(pendingFiles.map(f => f.name + ':' + f.size));
+  for (const f of fileList) {
+    const key = f.name + ':' + f.size;
+    if (!existing.has(key) && /\.xlsx?$/i.test(f.name)) {
+      pendingFiles.push(f);
+      existing.add(key);
+    }
+  }
+  renderFileChips();
+  analyzeBtn.disabled = pendingFiles.length === 0;
+  hideError();
+}
+
+function renderFileChips() {
+  uploadedFilesEl.innerHTML = '';
+  pendingFiles.forEach((f, i) => {
+    const chip = document.createElement('span');
+    chip.className = 'file-chip';
+    chip.innerHTML = `<span>📄 ${escapeHtml(f.name)}</span><span class="x" data-idx="${i}">✕</span>`;
+    uploadedFilesEl.appendChild(chip);
+  });
+  uploadedFilesEl.querySelectorAll('.x').forEach(x => {
+    x.addEventListener('click', (e) => {
+      const idx = parseInt(e.currentTarget.dataset.idx, 10);
+      pendingFiles.splice(idx, 1);
+      renderFileChips();
+      analyzeBtn.disabled = pendingFiles.length === 0;
+    });
+  });
+}
+
+resetBtn.addEventListener('click', () => {
+  pendingFiles = [];
+  currentRecords = [];
+  currentAnalysis = null;
+  fileInput.value = '';
+  renderFileChips();
+  analyzeBtn.disabled = true;
+  downloadBtn.style.display = 'none';
+  document.body.classList.remove('has-data');
+  if (monthlyChartInstance) { monthlyChartInstance.destroy(); monthlyChartInstance = null; }
+  hideError();
+});
+
+/* =======================================================================
+   3) EXCEL READING & NORMALIZATION
+   ======================================================================= */
+
+analyzeBtn.addEventListener('click', async () => {
+  hideError();
+  analyzeBtn.disabled = true;
+  analyzeBtn.textContent = '分析中…';
+  try {
+    const allRecords = [];
+    for (const f of pendingFiles) {
+      const recs = await readExcelFile(f);
+      allRecords.push(...recs);
+    }
+    if (!allRecords.length) {
+      showError('未能從檔案中讀取到任何有效資料。請確認檔案內包含「來診日」、「轉院原因」等欄位。');
+      return;
+    }
+    currentRecords = allRecords;
+    currentAnalysis = analyze(allRecords);
+    render(currentAnalysis);
+    document.body.classList.add('has-data');
+    downloadBtn.style.display = 'inline-flex';
+    window.scrollTo({ top: document.querySelector('.kpi-grid').offsetTop - 40, behavior: 'smooth' });
+  } catch (err) {
+    console.error(err);
+    showError('讀取或分析檔案時發生錯誤：' + err.message);
+  } finally {
+    analyzeBtn.disabled = false;
+    analyzeBtn.textContent = '② 開始分析';
+  }
+});
+
+function readExcelFile(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const data = new Uint8Array(e.target.result);
+        const wb = XLSX.read(data, { type: 'array', cellDates: true });
+        const sheet = wb.Sheets[wb.SheetNames[0]];
+        const json = XLSX.utils.sheet_to_json(sheet, { defval: null, raw: false, dateNF: 'yyyy-mm-dd' });
+
+        // Also get raw with cellDates to have Date objects in 來診日
+        const jsonRaw = XLSX.utils.sheet_to_json(sheet, { defval: null, raw: true });
+        // We need dates. Merge: for each row, if 來診日 is Date in jsonRaw use that, else parse string.
+        const normalized = [];
+        for (let i = 0; i < json.length; i++) {
+          const row = json[i];
+          const rawRow = jsonRaw[i];
+          const rec = normalizeRow(row, rawRow, file.name);
+          if (rec) normalized.push(rec);
+        }
+        resolve(normalized);
+      } catch (err) {
+        reject(err);
+      }
+    };
+    reader.onerror = () => reject(new Error('無法讀取檔案 ' + file.name));
+    reader.readAsArrayBuffer(file);
+  });
+}
+
+function normalizeRow(row, rawRow, sourceName) {
+  // Required: 來診日 and 轉院原因
+  const visitDateRaw = rawRow?.['來診日'] ?? row['來診日'];
+  const reason = row['轉院原因'];
+  if (!visitDateRaw || !reason) return null;
+
+  const date = parseDate(visitDateRaw);
+  if (!date) return null;
+
+  // Sub-specialty: 轉出科別 (新竹) or 細科 (竹北)
+  const subSpec = row['轉出科別'] ?? row['細科'] ?? '';
+
+  const transferHosp = (row['轉院醫院名稱'] || '').toString();
+
+  return {
+    source: sourceName,
+    date: date,
+    year: date.getFullYear(),
+    month: date.getMonth() + 1, // 1..12
+    monthKey: `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}`,
+    account: row['帳號'] || '',
+    dischargeDate: rawRow?.['核離日'] ?? row['核離日'] ?? '',
+    chartNo: row['病歷號'] || '',
+    name: row['姓名'] || '',
+    gender: row['性別'] || '',
+    department: row['科別'] || '',
+    diagnosis: row['診斷'] || '',
+    transferHospital: transferHosp,
+    transferReason: reason.toString().trim(),
+    subSpecialty: (subSpec || '').toString().trim(),
+    classified: classifyReason(reason),
+    isInterCampus: transferHosp.includes(INTER_CAMPUS_KEYWORD),
+  };
+}
+
+function parseDate(v) {
+  if (!v) return null;
+  if (v instanceof Date && !isNaN(v)) return v;
+  if (typeof v === 'number') {
+    // Excel serial (unlikely with cellDates:true, but be safe)
+    const epoch = new Date(Date.UTC(1899, 11, 30));
+    return new Date(epoch.getTime() + v * 86400000);
+  }
+  const s = v.toString().trim();
+  // Try standard parse
+  const d1 = new Date(s);
+  if (!isNaN(d1)) return d1;
+  // Try yyyy/m/d
+  const m = s.match(/^(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})/);
+  if (m) return new Date(+m[1], +m[2]-1, +m[3]);
+  return null;
+}
+
+/* =======================================================================
+   4) ANALYSIS
+   ======================================================================= */
+
+function analyze(records) {
+  records.sort((a, b) => a.date - b.date);
+
+  // Split: the pivot/trend analysis EXCLUDES inter-campus transfers.
+  // Inter-campus is reported separately in its own callout.
+  const interRecords = records.filter(r => r.isInterCampus);
+  const pivotRecords = records.filter(r => !r.isInterCampus);
+
+  // Months span the full dataset so the trend chart horizon is consistent
+  const monthSet = new Set(records.map(r => r.monthKey));
+  const months = Array.from(monthSet).sort();
+
+  // Per-category breakdown (pivot records only)
+  const categoryMap = new Map();
+  CATEGORY_META.forEach(c => {
+    categoryMap.set(c.key, { total: 0, byMonth: Object.fromEntries(months.map(m => [m, 0])), reasons: new Map() });
+  });
+
+  for (const r of pivotRecords) {
+    const cat = r.classified.category;
+    const det = r.classified.full;
+
+    let catEntry = categoryMap.get(cat);
+    if (!catEntry) {
+      catEntry = { total: 0, byMonth: Object.fromEntries(months.map(m => [m, 0])), reasons: new Map() };
+      categoryMap.set(cat, catEntry);
+    }
+    catEntry.total += 1;
+    catEntry.byMonth[r.monthKey] = (catEntry.byMonth[r.monthKey] || 0) + 1;
+
+    if (!catEntry.reasons.has(det)) {
+      catEntry.reasons.set(det, {
+        total: 0,
+        byMonth: Object.fromEntries(months.map(m => [m, 0])),
+        records: []
+      });
+    }
+    const reasonEntry = catEntry.reasons.get(det);
+    reasonEntry.total += 1;
+    reasonEntry.byMonth[r.monthKey] = (reasonEntry.byMonth[r.monthKey] || 0) + 1;
+    reasonEntry.records.push(r);
+  }
+
+  // Ordered categories — filter empty, order by CATEGORY_META
+  const categories = CATEGORY_META
+    .map(meta => {
+      const entry = categoryMap.get(meta.key);
+      if (!entry || entry.total === 0) return null;
+      const reasons = Array.from(entry.reasons.entries())
+        .map(([name, d]) => ({ name, ...d }))
+        .sort((a, b) => b.total - a.total);
+      return { meta, total: entry.total, byMonth: entry.byMonth, reasons };
+    })
+    .filter(Boolean);
+
+  const totalsByMonth = Object.fromEntries(months.map(m => [m, 0]));
+  categories.forEach(c => {
+    months.forEach(m => { totalsByMonth[m] += (c.byMonth[m] || 0); });
+  });
+
+  // Inter-campus monthly breakdown (for summary/export)
+  const interByMonth = Object.fromEntries(months.map(m => [m, 0]));
+  interRecords.forEach(r => { interByMonth[r.monthKey] = (interByMonth[r.monthKey] || 0) + 1; });
+
+  return {
+    records,                       // all records (raw)
+    pivotRecords,                  // records used for the pivot (non-inter-campus)
+    total: records.length,         // overall total
+    pivotTotal: pivotRecords.length, // what the pivot actually covers
+    months,
+    categories,                    // EXCLUDES inter-campus
+    totalsByMonth,                 // EXCLUDES inter-campus
+    interCampus: {
+      count: interRecords.length,
+      pct: records.length ? (interRecords.length / records.length) : 0,
+      byMonth: interByMonth,
+    },
+  };
+}
+
+/* =======================================================================
+   5) RENDERING
+   ======================================================================= */
+
+let monthlyChartInstance = null;
+
+function render(a) {
+  renderMeta(a);
+  renderKpis(a);
+  renderInterCampus(a);
+  renderMonthlyChart(a);
+  renderCategories(a);
+}
+
+function renderMeta(a) {
+  const now = new Date();
+  const pad = (n) => String(n).padStart(2, '0');
+  document.getElementById('meta-time').textContent =
+    `分析時間  ${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}`;
+  document.getElementById('meta-count').textContent = `樞紐 ${a.pivotTotal} 筆 · 互轉 ${a.interCampus.count} 筆 · ${a.months.length} 個月`;
+}
+
+function renderKpis(a) {
+  document.getElementById('kpi-total').textContent = a.pivotTotal.toLocaleString();
+  document.getElementById('kpi-total-hint').textContent =
+    `已排除院區互轉 ${a.interCampus.count} 筆 · 總收案 ${a.total}`;
+
+  document.getElementById('kpi-months').textContent = a.months.length;
+  document.getElementById('kpi-avg').textContent =
+    a.months.length ? (a.pivotTotal / a.months.length).toFixed(1) : '—';
+
+  const totalDetails = a.categories.reduce((s, c) => s + c.reasons.length, 0);
+  document.getElementById('kpi-reasons').textContent = a.categories.length;
+  document.getElementById('kpi-reasons-hint').textContent =
+    `${totalDetails} 個細項原因`;
+}
+
+function renderInterCampus(a) {
+  document.getElementById('inter-count').textContent = a.interCampus.count.toLocaleString();
+  document.getElementById('inter-pct').textContent =
+    `佔總轉出 ${(a.interCampus.pct * 100).toFixed(1)}%`;
+}
+
+function renderMonthlyChart(a) {
+  const ctx = document.getElementById('monthly-chart');
+  if (monthlyChartInstance) monthlyChartInstance.destroy();
+
+  const labels = a.months.map(formatMonthLabel);
+  const datasets = a.categories.map(cat => ({
+    label: cat.meta.key,
+    data: a.months.map(m => cat.byMonth[m] || 0),
+    backgroundColor: cat.meta.color + 'cc',
+    borderColor: cat.meta.color,
+    borderWidth: 1,
+    stack: 'total',
+    borderRadius: 2,
+  }));
+
+  monthlyChartInstance = new Chart(ctx, {
+    type: 'bar',
+    data: { labels, datasets },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      animation: { duration: 600, easing: 'easeOutQuart' },
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          backgroundColor: 'rgba(26,25,21,0.95)',
+          titleFont: { family: 'Noto Sans TC', size: 13, weight: 'bold' },
+          bodyFont:  { family: 'Noto Sans TC', size: 12 },
+          padding: 12,
+          callbacks: {
+            footer: (items) => {
+              const total = items.reduce((s, it) => s + it.parsed.y, 0);
+              return '合計：' + total + ' 人';
+            }
+          }
+        }
+      },
+      scales: {
+        x: {
+          stacked: true,
+          grid: { display: false },
+          ticks: { font: { family: 'Noto Sans TC', size: 12 }, color: '#595652' }
+        },
+        y: {
+          stacked: true,
+          beginAtZero: true,
+          ticks: { font: { family: 'JetBrains Mono', size: 11 }, color: '#8a857e', precision: 0 },
+          grid: { color: '#e8e2d5' }
+        }
+      }
+    }
+  });
+
+  // Custom legend (toggleable)
+  const legendEl = document.getElementById('chart-legend');
+  legendEl.innerHTML = '';
+  a.categories.forEach((cat, idx) => {
+    const div = document.createElement('div');
+    div.className = 'legend-item';
+    div.innerHTML = `<span class="legend-swatch" style="background:${cat.meta.color}"></span>
+                     <span>${escapeHtml(cat.meta.key)}</span>
+                     <span class="mono" style="color:var(--ink-mute); font-size:12px;">· ${cat.total}</span>`;
+    div.addEventListener('click', () => {
+      const meta = monthlyChartInstance.getDatasetMeta(idx);
+      meta.hidden = meta.hidden === null ? !monthlyChartInstance.data.datasets[idx].hidden : !meta.hidden;
+      div.classList.toggle('hidden');
+      monthlyChartInstance.update();
+    });
+    legendEl.appendChild(div);
+  });
+}
+
+function renderCategories(a) {
+  const container = document.getElementById('categories');
+  container.innerHTML = '';
+
+  a.categories.forEach(cat => {
+    const maxReasonTotal = Math.max(...cat.reasons.map(r => r.total));
+
+    const grp = document.createElement('div');
+    grp.className = 'cat-group';
+    grp.style.setProperty('--cat-color', cat.meta.color);
+    grp.style.setProperty('--cat-bg', cat.meta.bg);
+
+    let html = `
+      <div class="cat-header">
+        <div class="titleblk">
+          <h3>${escapeHtml(cat.meta.key)}</h3>
+          <span class="tagline">${cat.meta.tag}</span>
+        </div>
+        <div class="total">${cat.total}</div>
+      </div>
+    `;
+
+    cat.reasons.forEach((rsn, i) => {
+      const rowId = `rsn-${cat.meta.key}-${i}`.replace(/\s/g, '_');
+      const pct = maxReasonTotal ? (rsn.total / maxReasonTotal * 100) : 0;
+
+      html += `
+        <div class="reason-row" data-row="${rowId}">
+          <div class="reason-summary">
+            <div class="name">${escapeHtml(rsn.name)}</div>
+            <div class="bar-track"><div class="bar-fill" style="width:${pct}%"></div></div>
+            <div class="count">${rsn.total}</div>
+            <svg class="chev" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
+          </div>
+          <div class="reason-detail">
+            ${renderMonthlyStrip(rsn, a.months)}
+            ${renderPatientTable(rsn.records, cat.meta)}
+          </div>
+        </div>
+      `;
+    });
+
+    grp.innerHTML = html;
+    container.appendChild(grp);
+  });
+
+  // Attach toggle handlers
+  container.querySelectorAll('.reason-summary').forEach(el => {
+    el.addEventListener('click', () => {
+      el.parentElement.classList.toggle('open');
+    });
+  });
+}
+
+function renderMonthlyStrip(rsn, months) {
+  const pills = months.map(m => {
+    const v = rsn.byMonth[m] || 0;
+    return `<span class="monthly-pill"><span class="m-label">${formatMonthLabel(m)}</span><span class="m-val">${v}</span></span>`;
+  }).join('');
+  return `<div class="monthly-strip">${pills}</div>`;
+}
+
+function renderPatientTable(records, meta) {
+  const sorted = [...records].sort((a, b) => a.date - b.date);
+  const rows = sorted.map(r => `
+    <tr>
+      <td class="mono" style="font-size:12px;">${escapeHtml(r.account || '—')}</td>
+      <td class="date">${formatDate(r.date)}</td>
+      <td class="date">${formatDateTime(r.dischargeDate)}</td>
+      <td>${escapeHtml(r.department || '—')}</td>
+      <td class="diag">${escapeHtml(r.diagnosis || '—')}</td>
+      <td>${r.subSpecialty ? `<span class="dept">${escapeHtml(r.subSpecialty)}</span>` : '<span style="color:var(--ink-mute);">—</span>'}</td>
+      <td>${escapeHtml(r.transferHospital || '—')}</td>
+    </tr>
+  `).join('');
+
+  return `
+    <table class="patient-table">
+      <thead>
+        <tr>
+          <th style="width:120px;">帳號</th>
+          <th style="width:96px;">來診日</th>
+          <th style="width:132px;">核離日</th>
+          <th style="width:88px;">科別</th>
+          <th>診斷</th>
+          <th style="width:132px;">轉出科別／細科</th>
+          <th style="width:240px;">轉院醫院</th>
+        </tr>
+      </thead>
+      <tbody>${rows}</tbody>
+    </table>
+  `;
+}
+
+/* =======================================================================
+   6) EXPORT
+   ======================================================================= */
+
+downloadBtn.addEventListener('click', () => {
+  if (!currentAnalysis) return;
+  exportAnalysis(currentAnalysis);
+});
+
+function exportAnalysis(a) {
+  const wb = XLSX.utils.book_new();
+
+  /* Sheet 1: 摘要 Summary */
+  const summary = [
+    ['轉院原因樞紐分析報告'],
+    ['產生時間', new Date().toLocaleString('zh-TW')],
+    ['備註', '樞紐分析與月份趨勢已排除「新竹台大院區互轉」，互轉另行統計'],
+    [],
+    ['總收案人次', a.total],
+    ['　　新竹台大院區互轉 (筆數)', a.interCampus.count],
+    ['　　新竹台大院區互轉 (佔比)', (a.interCampus.pct * 100).toFixed(2) + '%'],
+    ['樞紐分析人次 (已排除互轉)', a.pivotTotal],
+    ['涵蓋月份', a.months.join(', ')],
+    [],
+    ['── 樞紐分析（已排除互轉）各類別 ──'],
+    ['類別', '總計', ...a.months.map(formatMonthLabel)],
+    ...a.categories.map(c => [c.meta.key, c.total, ...a.months.map(m => c.byMonth[m] || 0)]),
+    [],
+    ['── 院區互轉逐月統計（僅供參考）──'],
+    ['月份', ...a.months.map(formatMonthLabel)],
+    ['新竹台大院區互轉', ...a.months.map(m => a.interCampus.byMonth[m] || 0)]
+  ];
+  const ws1 = XLSX.utils.aoa_to_sheet(summary);
+  ws1['!cols'] = [{ wch: 30 }, { wch: 12 }, ...a.months.map(() => ({ wch: 10 }))];
+  XLSX.utils.book_append_sheet(wb, ws1, '摘要');
+
+  /* Sheet 2: 原因樞紐 Reason pivot */
+  const pivotHeader = ['類別', '轉院原因', '總計', ...a.months.map(formatMonthLabel)];
+  const pivot = [pivotHeader];
+  a.categories.forEach(c => {
+    c.reasons.forEach(r => {
+      pivot.push([c.meta.key, r.name, r.total, ...a.months.map(m => r.byMonth[m] || 0)]);
+    });
+  });
+  const ws2 = XLSX.utils.aoa_to_sheet(pivot);
+  ws2['!cols'] = [{ wch: 12 }, { wch: 34 }, { wch: 8 }, ...a.months.map(() => ({ wch: 10 }))];
+  XLSX.utils.book_append_sheet(wb, ws2, '原因樞紐');
+
+  /* Sheet 3: 月份趨勢 */
+  const trendHeader = ['月份', '總計', ...a.categories.map(c => c.meta.key)];
+  const trend = [trendHeader];
+  a.months.forEach(m => {
+    trend.push([
+      formatMonthLabel(m),
+      a.totalsByMonth[m] || 0,
+      ...a.categories.map(c => c.byMonth[m] || 0),
+    ]);
+  });
+  const ws3 = XLSX.utils.aoa_to_sheet(trend);
+  ws3['!cols'] = [{ wch: 12 }, { wch: 8 }, ...a.categories.map(() => ({ wch: 12 }))];
+  XLSX.utils.book_append_sheet(wb, ws3, '月份趨勢');
+
+  /* Sheet 4: 病人明細 */
+  const detailHeader = ['來源檔', '帳號', '來診日', '核離日', '月份', '病歷號', '姓名', '性別', '科別', '診斷', '轉出科別/細科', '轉院醫院名稱', '轉院原因', '類別', '是否台大互轉'];
+  const detail = [detailHeader];
+  a.records.forEach(r => {
+    detail.push([
+      r.source,
+      r.account,
+      formatDate(r.date),
+      formatDateTime(r.dischargeDate),
+      r.monthKey,
+      r.chartNo,
+      r.name,
+      r.gender,
+      r.department,
+      r.diagnosis,
+      r.subSpecialty,
+      r.transferHospital,
+      r.transferReason,
+      r.classified.category,
+      r.isInterCampus ? '是' : '否',
+    ]);
+  });
+  const ws4 = XLSX.utils.aoa_to_sheet(detail);
+  ws4['!cols'] = [
+    { wch: 28 }, { wch: 13 }, { wch: 12 }, { wch: 18 }, { wch: 8 }, { wch: 12 }, { wch: 10 }, { wch: 6 },
+    { wch: 10 }, { wch: 42 }, { wch: 14 }, { wch: 34 }, { wch: 22 }, { wch: 10 }, { wch: 10 },
+  ];
+  XLSX.utils.book_append_sheet(wb, ws4, '病人明細');
+
+  /* Save */
+  const stamp = (() => {
+    const d = new Date();
+    const pad = n => String(n).padStart(2, '0');
+    return `${d.getFullYear()}${pad(d.getMonth()+1)}${pad(d.getDate())}_${pad(d.getHours())}${pad(d.getMinutes())}`;
+  })();
+  XLSX.writeFile(wb, `轉院原因樞紐分析_${stamp}.xlsx`);
+}
+
+/* =======================================================================
+   7) UTIL
+   ======================================================================= */
+
+function formatDate(d) {
+  if (!(d instanceof Date) || isNaN(d)) return '—';
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+}
+function formatDateTime(v) {
+  if (v === null || v === undefined || v === '') return '—';
+  const pad = (n) => String(n).padStart(2, '0');
+  // If it's already a Date object (from 竹北 format)
+  if (v instanceof Date && !isNaN(v)) {
+    return `${v.getFullYear()}-${pad(v.getMonth()+1)}-${pad(v.getDate())} ${pad(v.getHours())}:${pad(v.getMinutes())}`;
+  }
+  // Otherwise return the string as-is (新竹 already has yyyy/mm/dd HH:MM text)
+  const s = v.toString().trim();
+  return s || '—';
+}
+function formatMonthLabel(mk) {
+  // mk = "2026-01"
+  const [y, m] = mk.split('-');
+  return `${y}/${parseInt(m, 10)}月`;
+}
+function escapeHtml(s) {
+  if (s === null || s === undefined) return '';
+  return s.toString().replace(/[&<>"']/g, c =>
+    ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
+}
+function showError(msg) {
+  errorBanner.textContent = msg;
+  errorBanner.classList.add('show');
+}
+function hideError() {
+  errorBanner.classList.remove('show');
+  errorBanner.textContent = '';
+}
+</script>
+</body>
+</html>
