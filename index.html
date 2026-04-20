@@ -513,7 +513,102 @@
     font-weight: 600;
   }
 
-  /* ——— Empty state ——— */
+  /* ——— Breakdown block (人力因素 / 設備 analytical tables) ——— */
+  .breakdown-block {
+    margin: 16px 0 22px;
+    padding: 18px 20px;
+    background: #f2ede1;
+    border: 1px solid var(--line-soft);
+    border-left: 3px solid var(--cat-color, var(--ink));
+    border-radius: 2px;
+  }
+  .breakdown-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 12px;
+    margin-bottom: 14px;
+  }
+  .breakdown-title {
+    font-family: 'Noto Serif TC', serif;
+    font-size: 15px;
+    font-weight: 700;
+    color: var(--cat-color, var(--ink));
+    letter-spacing: 0.02em;
+  }
+  .breakdown-legend {
+    font-size: 12px;
+    color: var(--ink-soft);
+    display: inline-flex;
+    align-items: center;
+    gap: 14px;
+    flex-wrap: wrap;
+  }
+  .breakdown-legend .sw {
+    display: inline-block;
+    width: 10px; height: 10px;
+    border-radius: 2px;
+    margin-right: 5px;
+    vertical-align: -1px;
+  }
+  .breakdown-legend .sw.on-duty { background: #4a7a99; }
+  .breakdown-legend .sw.off-duty { background: #b16a4a; }
+  .breakdown-legend .sw.unknown { background: #a8a29a; }
+
+  .breakdown-scroll { overflow-x: auto; }
+  .breakdown-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+  }
+  .breakdown-table thead th {
+    background: #ebe5d4;
+    padding: 8px 10px;
+    font-weight: 600;
+    font-size: 11px;
+    letter-spacing: 0.06em;
+    color: var(--ink-soft);
+    border-bottom: 1px solid var(--line);
+    text-align: left;
+    white-space: nowrap;
+  }
+  .breakdown-table thead th.num { text-align: right; }
+  .breakdown-table tbody td {
+    padding: 7px 10px;
+    border-bottom: 1px solid var(--line-soft);
+    vertical-align: middle;
+  }
+  .breakdown-table tbody tr:hover { background: rgba(0, 0, 0, 0.02); }
+  .breakdown-table tbody td.keycell {
+    color: var(--ink);
+    font-weight: 500;
+  }
+  .breakdown-table tbody td.num {
+    text-align: right;
+    font-family: 'JetBrains Mono', monospace;
+    font-feature-settings: "tnum";
+    white-space: nowrap;
+  }
+  .breakdown-table tbody td.num.dim { color: #c4bdae; font-weight: 400; }
+  .breakdown-table tbody td.num.on-duty { color: #2f5a75; font-weight: 600; }
+  .breakdown-table tbody td.num.off-duty { color: #8a4a2a; font-weight: 600; }
+  .breakdown-table tbody td.num.total {
+    font-weight: 700;
+    color: var(--cat-color, var(--ink));
+  }
+  .breakdown-table tbody tr.total-row td {
+    background: #ebe5d4;
+    font-weight: 700;
+    border-top: 2px solid var(--line);
+    border-bottom: none;
+  }
+  .breakdown-hint {
+    margin-top: 10px;
+    font-size: 11px;
+    color: var(--ink-mute);
+    letter-spacing: 0.02em;
+  }
   #empty-state {
     text-align: center;
     padding: 80px 24px;
@@ -839,6 +934,19 @@ function getDayInfo(date) {
     holidayName,
     kind,
   };
+}
+
+/* Shift classification from the 核離日 timestamp:
+   - 上班時間: 平日（非例假日） 08:00–17:00
+   - 值班時段: 夜間、例假日（週末或國定假日）全日           */
+function getShiftType(date) {
+  if (!(date instanceof Date) || isNaN(date)) return null;
+  const info = getDayInfo(date);
+  if (!info) return null;
+  if (info.isHoliday) return '值班時段'; // 週末與國定假日全日皆為值班
+  const mins = date.getHours() * 60 + date.getMinutes();
+  if (mins >= 8 * 60 && mins < 17 * 60) return '上班時間';
+  return '值班時段';
 }
 
 /* ——— Classify reason text into category + detail ——— */
@@ -1344,6 +1452,13 @@ function renderCategories(a) {
       const rowId = `rsn-${cat.meta.key}-${i}`.replace(/\s/g, '_');
       const pct = maxReasonTotal ? (rsn.total / maxReasonTotal * 100) : 0;
 
+      let breakdownHtml = '';
+      if (cat.meta.key === '人力因素') {
+        breakdownHtml = renderReasonBreakdown(rsn, a.months, 'staffing');
+      } else if (cat.meta.key === '設備') {
+        breakdownHtml = renderReasonBreakdown(rsn, a.months, 'equipment');
+      }
+
       html += `
         <div class="reason-row" data-row="${rowId}">
           <div class="reason-summary">
@@ -1354,6 +1469,7 @@ function renderCategories(a) {
           </div>
           <div class="reason-detail">
             ${renderMonthlyStrip(rsn, a.months)}
+            ${breakdownHtml}
             ${renderPatientTable(rsn.records, cat.meta)}
           </div>
         </div>
@@ -1378,6 +1494,115 @@ function renderMonthlyStrip(rsn, months) {
     return `<span class="monthly-pill"><span class="m-label">${formatMonthLabel(m)}</span><span class="m-val">${v}</span></span>`;
   }).join('');
   return `<div class="monthly-strip">${pills}</div>`;
+}
+
+/* Breakdown for 人力因素 reasons (by 轉出科別 × 時段) and 設備 reasons (by 備註 × 時段).
+   mode: 'staffing' | 'equipment'                                              */
+function renderReasonBreakdown(rsn, months, mode) {
+  const keyFn = mode === 'staffing'
+    ? (r) => r.subSpecialty || '（未填）'
+    : (r) => r.notes || '（未填）';
+  const keyLabel = mode === 'staffing' ? '轉出科別／細科' : '備註／原因分析';
+  const title = mode === 'staffing'
+    ? '統整：轉出科別／細科 × 時段'
+    : '統整：備註／原因分析 × 時段';
+
+  // Aggregate
+  const map = new Map();
+  for (const r of rsn.records) {
+    const k = keyFn(r);
+    if (!map.has(k)) {
+      map.set(k, {
+        key: k,
+        onDuty: 0,      // 上班時間
+        offDuty: 0,     // 值班時段
+        unknown: 0,
+        total: 0,
+        byMonth: Object.fromEntries(months.map(m => [m, 0])),
+      });
+    }
+    const entry = map.get(k);
+    entry.total += 1;
+    entry.byMonth[r.monthKey] = (entry.byMonth[r.monthKey] || 0) + 1;
+    const dt = parseDischargeDate(r.dischargeDate);
+    const s = dt ? getShiftType(dt) : null;
+    if (s === '上班時間') entry.onDuty += 1;
+    else if (s === '值班時段') entry.offDuty += 1;
+    else entry.unknown += 1;
+  }
+  const rows = Array.from(map.values()).sort((a, b) => b.total - a.total);
+
+  // Totals
+  const totals = rows.reduce((acc, r) => {
+    acc.onDuty += r.onDuty;
+    acc.offDuty += r.offDuty;
+    acc.unknown += r.unknown;
+    acc.total += r.total;
+    months.forEach(m => { acc.byMonth[m] = (acc.byMonth[m] || 0) + (r.byMonth[m] || 0); });
+    return acc;
+  }, { onDuty: 0, offDuty: 0, unknown: 0, total: 0, byMonth: {} });
+
+  const onDutyPct = totals.total ? (totals.onDuty / totals.total * 100) : 0;
+  const offDutyPct = totals.total ? (totals.offDuty / totals.total * 100) : 0;
+
+  const monthCols = months.map(formatMonthLabel)
+    .map(ml => `<th class="num">${ml}</th>`).join('');
+
+  let bodyRows = '';
+  rows.forEach(r => {
+    const monthCells = months.map(m => {
+      const v = r.byMonth[m] || 0;
+      return `<td class="num${v ? '' : ' dim'}">${v || '—'}</td>`;
+    }).join('');
+    bodyRows += `
+      <tr>
+        <td class="keycell">${escapeHtml(r.key)}</td>
+        <td class="num on-duty${r.onDuty ? '' : ' dim'}">${r.onDuty || '—'}</td>
+        <td class="num off-duty${r.offDuty ? '' : ' dim'}">${r.offDuty || '—'}</td>
+        <td class="num total">${r.total}</td>
+        ${monthCells}
+      </tr>`;
+  });
+
+  const totalMonthCells = months.map(m =>
+    `<td class="num">${totals.byMonth[m] || 0}</td>`).join('');
+
+  return `
+    <div class="breakdown-block">
+      <div class="breakdown-head">
+        <span class="breakdown-title">${title}</span>
+        <span class="breakdown-legend">
+          <span class="sw on-duty"></span>上班時間 ${totals.onDuty} (${onDutyPct.toFixed(0)}%)
+          <span class="sw off-duty"></span>值班時段 ${totals.offDuty} (${offDutyPct.toFixed(0)}%)
+          ${totals.unknown ? `<span class="sw unknown"></span>未知 ${totals.unknown}` : ''}
+        </span>
+      </div>
+      <div class="breakdown-scroll">
+        <table class="breakdown-table">
+          <thead>
+            <tr>
+              <th>${keyLabel}</th>
+              <th class="num">上班時間</th>
+              <th class="num">值班時段</th>
+              <th class="num">小計</th>
+              ${monthCols}
+            </tr>
+          </thead>
+          <tbody>
+            ${bodyRows}
+            <tr class="total-row">
+              <td class="keycell">合計</td>
+              <td class="num on-duty">${totals.onDuty}</td>
+              <td class="num off-duty">${totals.offDuty}</td>
+              <td class="num total">${totals.total}</td>
+              ${totalMonthCells}
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="breakdown-hint">時段定義：上班時間 = 平日（非例假日）08:00–17:00；值班時段 = 其餘時間（含週末、國定假日）</div>
+    </div>
+  `;
 }
 
 function renderPatientTable(records, meta) {
